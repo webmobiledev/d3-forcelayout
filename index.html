@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Force Layout</title>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <style>
+    .links line {
+      stroke: black;
+      stroke-opacity: 0.6;
+    }
+    .nodes circle {
+      stroke: #fff;
+      stroke-width: 1.5px;
+    }
+    .row {
+      padding: 20px;
+    }
+    .btn.zoom {
+      width: 50px;
+    }
+    .btn.zoom.in {
+      border-bottom-right-radius: 0;
+      border-top-right-radius: 0;
+    }
+    .btn.zoom.out {
+      border-bottom-left-radius: 0;
+      border-top-left-radius: 0;
+    }
+    .input-group
+    {
+      margin: 20px 0;
+    }
+    .col-md-2
+    {
+      padding: 20px;
+      border: solid 1px #ccc;
+      border-radius: 10px;
+    }
+    </style>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+  </head>
+  <body>
+    <div class="row">
+      <div class="col-md-10">
+        <svg></svg>
+      </div>
+      <div class="col-md-2 text-center">
+        <div id="gui"></div>
+        <div class="input-group">
+          <input type="text" class="form-control" placeholder="Search">
+          <div class="input-group-btn">
+            <button class="btn btn-default" type="submit">
+              <i class="glyphicon glyphicon-search"></i>
+            </button>
+          </div>
+        </div>
+        <button class="btn btn-primary btn-block">Button1</button>
+        <button class="btn btn-primary btn-block">Button2</button>
+      </div>
+    </div>
+    <script src="https://d3js.org/d3.v4.min.js"></script>
+    <script>
+      var width = $(window).width(),
+          height = $(window).height();
+      var color = d3.scaleOrdinal(d3.schemeCategory20);
+
+      var simulation = d3.forceSimulation()
+          .force("link", d3.forceLink().id(function(d) { return d.id; }).distance(70).strength(1))
+          .force("charge", d3.forceManyBody())
+          .force("center", d3.forceCenter(width / 2, height / 2));
+
+      d3.json("data/graph_v3.json", function(error, graph){
+        var graph = getGraphData(graph);
+        var x = [], y = [];
+        var svg = d3.select("svg")
+            .datum(graph)
+            .attr("width", width)
+            .attr("height", height);
+        var dragG = svg.append("g")
+            .attr("transform", "translate(0, 0)")
+            .call(d3.drag()
+              .on("start", totaldragstarted)
+              .on("drag", totaldragged)
+              .on("end", totaldragended));
+
+        var _zoom = d3.zoom()
+          .scaleExtent([1 / 2, 8])
+          .on("zoom", function() {
+            d3.select("g").attr("transform", d3.event.transform);
+          });
+        svg.call(_zoom);
+
+        var link = svg.selectAll("g").append("g")
+          .attr("class", "links")
+          .selectAll("line")
+          .data(graph.links)
+          .enter().append("line")
+            .attr("class", function(d) {
+              return d.source + "-" + d.target;
+            })
+            .attr("stroke-width", 3);
+
+        var node = dragG.selectAll("g")
+          .data(graph.nodes)
+          .enter().append("g")
+            .attr("class", function(d) {
+              return d.id;
+            })
+            .call(d3.drag()
+                .on("start", dragstarted)
+                .on("drag", dragged)
+                .on("end", dragended));  
+
+        var circle = node.append("circle")
+          .attr("class", function(d){return d.id;})
+          .attr("r", 10)
+          .attr("fill", function(d) {
+            console.log(color);
+            return color(d.group); 
+          });
+
+        circle.append("title")
+            .text(function(d) {
+              return d.group; 
+            });
+          
+        circle.on("mouseover", function(d){
+          circle.style("r", 10);
+          circle.style("stroke-width", 0);
+          $("line").css("stroke-width", 3);
+          for(var i = 0 ; i < $("line").length ; i ++){
+            if ($("line")[i].className.baseVal.indexOf(d.id) >= 0) {
+              $("line." + $("line")[i].className.baseVal).css("stroke-width", 10);
+              for(var j = 0 ; j < 2 ; j ++)
+              {
+                if ($("line")[i].className.baseVal.split("-")[j] == d.id) {
+                  $("circle."+$("line")[i].className.baseVal.split("-")[j]).css("r", 18);
+                  $("circle."+$("line")[i].className.baseVal.split("-")[j]).css("stroke-width", 5);
+                  $("circle."+$("line")[i].className.baseVal.split("-")[j]).css("stroke", "black");
+                } else {
+                  $("circle."+$("line")[i].className.baseVal.split("-")[j]).css("r", 18);
+                  $("circle."+$("line")[i].className.baseVal.split("-")[j]).css("stroke-width", 2);
+                  $("circle."+$("line")[i].className.baseVal.split("-")[j]).css("stroke", "grey");
+                }
+              }   
+            }
+          }
+        });
+
+        circle.on("mouseout", function(d){
+          circle.style("r", 10);
+          circle.style("stroke-width", 0);
+          $("line").css("stroke-width", 3);
+        });
+
+        var text = node.append("text")
+            .text(function(d) {
+              // return d.group;
+            });  
+
+        simulation
+            .nodes(graph.nodes)
+            .on("tick", ticked);
+
+        simulation.force("link")
+            .links(graph.links);
+
+        function ticked() {
+          link
+              .attr("x1", function(d) { return d.source.x; })
+              .attr("y1", function(d) { return d.source.y; })
+              .attr("x2", function(d) { return d.target.x; })
+              .attr("y2", function(d) { return d.target.y; });
+
+          circle
+              .attr("cx", function(d) { return d.x; })
+              .attr("cy", function(d) { return d.y; });
+        }
+
+        function dragstarted(d) {
+          if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        }
+
+        function dragged(d) {
+          d.fx = d3.event.x;
+          d.fy = d3.event.y;
+        }
+
+        function dragended(d) {
+          if (!d3.event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        }
+
+        function totaldragstarted(d) {
+          d3.select(this).raise().classed("active", true);
+        }
+
+        function totaldragged(d) {
+          d3.select(this).select("text")
+            .attr("x", d.x = d3.event.x)
+            .attr("y", d.y = d3.event.y);
+          d3.select(this).select("rect")
+            .attr("x", d.x = d3.event.x)
+            .attr("y", d.y = d3.event.y);
+        }
+
+        function totaldragended(d) {
+          d3.select(this).classed("active", false);
+        }
+
+        var gui = d3.select("#gui");
+        gui.append("button")
+          .attr("class", "btn btn-primary")
+          .classed("zoom in", true)
+          .text("+")
+          .on("click", function() {
+            _zoom.scaleBy(svg, 2);
+          });
+        gui.append("button")
+          .attr("class", "btn btn-default")
+          .classed("zoom out", true)
+          .text("-")
+          .on("click", function() {
+            _zoom.scaleBy(svg, 0.5);
+          })
+
+        function getGraphData(data) {
+          var nodes = [];
+          var links = [];
+          for(var i = 0 ; i < data.results[0].data.length ; i ++)
+          {
+            if(data.results[0].data[i].graph)
+            {
+              for(var j = 0 ; j < data.results[0].data[i].graph.nodes.length ; j ++)
+              {
+                var flag = false;
+                for(var k = 0 ; k < nodes.length ; k ++)
+                {
+                  if (nodes[k].id == data.results[0].data[i].graph.nodes[j].id) {
+                    flag = true;
+                    break;
+                  }
+                }
+                if (!flag) {
+                  nodes.push({"id": data.results[0].data[i].graph.nodes[j].id, "group":data.results[0].data[i].graph.nodes[j].properties.p_name});
+                }
+              }
+              links.push({"source": data.results[0].data[i].graph.relationships[0].startNode, "target": data.results[0].data[i].graph.relationships[0].endNode, "value": data.results[0].data[i].graph.relationships[0].type});
+            }
+          }
+          return {"nodes": nodes, "links": links};
+        }
+
+      });
+    </script>
+  </body>
+</html>
